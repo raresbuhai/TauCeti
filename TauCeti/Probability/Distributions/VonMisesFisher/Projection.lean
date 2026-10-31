@@ -51,7 +51,6 @@ def vonMisesFisherProjectionPDF (d : ℕ) (κ x : ℝ) : ℝ≥0∞ :=
   ENNReal.ofReal (vonMisesFisherProjectionPDFReal d κ x)
 
 /-- The extended density is the nonnegative lift of the real density. -/
-@[simp]
 theorem vonMisesFisherProjectionPDF_eq_ofReal (d : ℕ) (κ x : ℝ) :
     vonMisesFisherProjectionPDF d κ x =
       ENNReal.ofReal (vonMisesFisherProjectionPDFReal d κ x) := (rfl)
@@ -77,7 +76,7 @@ theorem vonMisesFisherProjectionPDFReal_of_invalid {d : ℕ} {κ x : ℝ}
 
 /-- The projection density vanishes off the open unit interval, including at its endpoints. -/
 @[simp]
-theorem vonMisesFisherProjectionPDFReal_eq_zero {d : ℕ} {κ x : ℝ}
+theorem vonMisesFisherProjectionPDFReal_of_notMem_Ioo {d : ℕ} {κ x : ℝ}
     (hx : x ∉ Ioo (-1) 1) : vonMisesFisherProjectionPDFReal d κ x = 0 := by
   have h : ¬(0 < (x + 1) / 2 ∧ (x + 1) / 2 < 1) := by
     intro ht
@@ -148,7 +147,7 @@ theorem vonMisesFisherProjectionPDFReal_pos_iff {d : ℕ} (hd : 2 ≤ d) {κ : �
   constructor
   · contrapose!
     intro hx
-    simp [vonMisesFisherProjectionPDFReal_eq_zero hx]
+    simp [vonMisesFisherProjectionPDFReal_of_notMem_Ioo hx]
   · intro hx
     rw [vonMisesFisherProjectionPDFReal, ite_eq_left ⟨hd, hκ⟩]
     exact mul_pos (div_pos (betaPDFReal_pos (by linarith [hx.1])
@@ -202,8 +201,30 @@ theorem map_inner_vonMisesFisherMeasure_eq_withDensity (hd : 2 ≤ Module.finran
     exact (ENNReal.ofReal_mul (div_nonneg (betaPDFReal_nonneg ha ha _) two_pos.le)).symm
   · have hf : vonMisesFisherProjectionPDF (Module.finrank ℝ E) κ = 0 := by
       funext x
-      simp [vonMisesFisherProjectionPDFReal, hκ]
+      simp [vonMisesFisherProjectionPDF, vonMisesFisherProjectionPDFReal, hκ]
     simp [vonMisesFisherMeasure_of_neg m (lt_of_not_ge hκ), hf]
+
+/-- The extended projection density has total integral one at every valid parameter. -/
+@[simp]
+theorem lintegral_vonMisesFisherProjectionPDF_eq_one {d : ℕ} (hd : 2 ≤ d) {κ : ℝ}
+    (hκ : 0 ≤ κ) : ∫⁻ x, vonMisesFisherProjectionPDF d κ x = 1 := by
+  let m : sphere (0 : EuclideanSpace ℝ (Fin d)) 1 :=
+    ⟨EuclideanSpace.single ⟨0, by omega⟩ 1, by simp⟩
+  have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
+  have hmap := map_inner_vonMisesFisherMeasure_eq_withDensity (by simpa using hd) m κ
+  have hmass := congrArg (fun μ : Measure ℝ ↦ μ univ) hmap
+  simpa only [measure_univ, withDensity_apply _ MeasurableSet.univ, Measure.restrict_univ,
+    finrank_euclideanSpace_fin] using hmass.symm
+
+/-- The real projection density has total integral one at every valid parameter. -/
+@[simp]
+theorem integral_vonMisesFisherProjectionPDFReal_eq_one {d : ℕ} (hd : 2 ≤ d) {κ : ℝ}
+    (hκ : 0 ≤ κ) : ∫ x, vonMisesFisherProjectionPDFReal d κ x = 1 := by
+  have hnonneg := ae_of_all volume (vonMisesFisherProjectionPDFReal_nonneg d κ)
+  rw [integral_eq_lintegral_of_nonneg_ae hnonneg
+    (measurable_vonMisesFisherProjectionPDFReal d κ).aestronglyMeasurable]
+  simpa only [vonMisesFisherProjectionPDF_eq_ofReal, ENNReal.toReal_one] using
+    congrArg ENNReal.toReal (lintegral_vonMisesFisherProjectionPDF_eq_one hd hκ)
 
 /-- The projection law has the stated Radon–Nikodym derivative relative to Lebesgue measure. -/
 theorem rnDeriv_map_inner_vonMisesFisherMeasure (hd : 2 ≤ Module.finrank ℝ E)
@@ -215,13 +236,15 @@ theorem rnDeriv_map_inner_vonMisesFisherMeasure (hd : 2 ≤ Module.finrank ℝ E
 
 /-- The projection lies strictly between the endpoints almost surely. -/
 theorem ae_mem_Ioo_map_inner_vonMisesFisherMeasure (hd : 2 ≤ Module.finrank ℝ E)
-    (m : sphere (0 : E) 1) {κ : ℝ} (hκ : 0 ≤ κ) :
+    (m : sphere (0 : E) 1) {κ : ℝ} :
     ∀ᵐ y ∂(vonMisesFisherMeasure m κ).map
       (fun x : sphere (0 : E) 1 ↦ ⟪(m : E), (x : E)⟫), y ∈ Ioo (-1) 1 := by
   rw [map_inner_vonMisesFisherMeasure_eq_withDensity hd m κ,
     ae_withDensity_iff (measurable_vonMisesFisherProjectionPDF _ _)]
-  exact ae_of_all _ fun y hy ↦ (vonMisesFisherProjectionPDFReal_pos_iff hd hκ y).1
-    (ENNReal.ofReal_ne_zero_iff.1 hy)
+  refine ae_of_all _ fun y hy ↦ ?_
+  by_contra hx
+  exact hy (by simp [vonMisesFisherProjectionPDF,
+    vonMisesFisherProjectionPDFReal_of_notMem_Ioo hx])
 
 /-- The topological support of the projection is the closed unit interval. -/
 theorem support_map_inner_vonMisesFisherMeasure (hd : 2 ≤ Module.finrank ℝ E)
@@ -252,10 +275,8 @@ theorem cdf_map_inner_vonMisesFisherMeasure_of_le (hd : 2 ≤ Module.finrank ℝ
     cdf ((vonMisesFisherMeasure m κ).map
       (fun y : sphere (0 : E) 1 ↦ ⟪(m : E), (y : E)⟫)) x = 0 := by
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
-  rw [cdf_eq_real, measureReal_eq_zero_iff]
-  exact measure_eq_zero_iff_ae_notMem.2
-    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m hκ).mono fun y hy ↦
-      (not_le_of_gt (hx.trans_lt hy.1)))
+  exact Measure.cdf_eq_zero_of_ae_lt _
+    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m).mono fun _ hy ↦ hx.trans_lt hy.1)
 
 /-- The projection cdf is one at and above the upper endpoint. -/
 theorem cdf_map_inner_vonMisesFisherMeasure_of_ge (hd : 2 ≤ Module.finrank ℝ E)
@@ -263,12 +284,8 @@ theorem cdf_map_inner_vonMisesFisherMeasure_of_ge (hd : 2 ≤ Module.finrank ℝ
     cdf ((vonMisesFisherMeasure m κ).map
       (fun y : sphere (0 : E) 1 ↦ ⟪(m : E), (y : E)⟫)) x = 1 := by
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
-  have heq : Iic x =ᵐ[(vonMisesFisherMeasure m κ).map
-      (fun y : sphere (0 : E) 1 ↦ ⟪(m : E), (y : E)⟫)] univ :=
-    Filter.eventuallyEqSet_univ.2
-      ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m hκ).mono
-        fun y hy ↦ hy.2.le.trans hx)
-  rw [cdf_eq_real, measureReal_congr heq, probReal_univ]
+  exact Measure.cdf_eq_one_of_ae_le _
+    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m).mono fun _ hy ↦ hy.2.le.trans hx)
 
 /-- The cdf integrates the projection density from the lower endpoint, for every real argument. -/
 theorem cdf_map_inner_vonMisesFisherMeasure_eq_integral (hd : 2 ≤ Module.finrank ℝ E)
@@ -298,16 +315,9 @@ theorem cdf_map_inner_vonMisesFisherMeasure_pos_iff (hd : 2 ≤ Module.finrank �
     0 < cdf ((vonMisesFisherMeasure m κ).map
       (fun y : sphere (0 : E) 1 ↦ ⟪(m : E), (y : E)⟫)) x ↔ -1 < x := by
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
-  constructor
-  · contrapose!
-    intro hx
-    simp [cdf_map_inner_vonMisesFisherMeasure_of_le hd m hκ hx]
-  · intro hx
-    by_cases h : 1 ≤ x
-    · simp [cdf_map_inner_vonMisesFisherMeasure_of_ge hd m hκ h]
-    · exact (cdf_nonneg _ (-1)).trans_lt
-        (strictMonoOn_cdf_map_inner_vonMisesFisherMeasure hd m hκ
-          ⟨le_rfl, by norm_num⟩ ⟨hx.le, (not_le.mp h).le⟩ hx)
+  exact Measure.cdf_pos_iff_of_support_eq_Icc _
+    (ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m)
+    (support_map_inner_vonMisesFisherMeasure hd m hκ)
 
 /-- The projection cdf is less than one exactly below the upper support endpoint. -/
 theorem cdf_map_inner_vonMisesFisherMeasure_lt_one_iff (hd : 2 ≤ Module.finrank ℝ E)
@@ -315,15 +325,9 @@ theorem cdf_map_inner_vonMisesFisherMeasure_lt_one_iff (hd : 2 ≤ Module.finran
     cdf ((vonMisesFisherMeasure m κ).map
       (fun y : sphere (0 : E) 1 ↦ ⟪(m : E), (y : E)⟫)) x < 1 ↔ x < 1 := by
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
-  constructor
-  · contrapose!
-    intro hx
-    simp [cdf_map_inner_vonMisesFisherMeasure_of_ge hd m hκ hx]
-  · intro hx
-    by_cases h : x ≤ -1
-    · simp [cdf_map_inner_vonMisesFisherMeasure_of_le hd m hκ h]
-    · exact (strictMonoOn_cdf_map_inner_vonMisesFisherMeasure hd m hκ
-        ⟨(not_le.mp h).le, hx.le⟩ ⟨by norm_num, le_rfl⟩ hx).trans_le (cdf_le_one _ 1)
+  exact Measure.cdf_lt_one_iff_of_support_eq_Icc _
+    (ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m)
+    (support_map_inner_vonMisesFisherMeasure hd m hκ)
 
 /-- Interior projection quantiles lie in the open unit interval. -/
 theorem quantile_map_inner_vonMisesFisherMeasure_mem_Ioo (hd : 2 ≤ Module.finrank ℝ E)
@@ -331,10 +335,8 @@ theorem quantile_map_inner_vonMisesFisherMeasure_mem_Ioo (hd : 2 ≤ Module.finr
     ((vonMisesFisherMeasure m κ).map
       (fun y : sphere (0 : E) 1 ↦ ⟪(m : E), (y : E)⟫)).quantile u ∈ Ioo (-1) 1 := by
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
-  have hroot := Measure.cdf_quantile _
-    (continuous_cdf_map_inner_vonMisesFisherMeasure hd m hκ) hu.1 hu.2
-  exact ⟨(cdf_map_inner_vonMisesFisherMeasure_pos_iff hd m hκ).1 (hroot.symm ▸ hu.1),
-    (cdf_map_inner_vonMisesFisherMeasure_lt_one_iff hd m hκ).1 (hroot.symm ▸ hu.2)⟩
+  exact ordConnected_Ioo.quantile_mem (ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m)
+    hu.1 hu.2
 
 /-- The projection quantile is the unique interior root of the integral cdf. -/
 theorem quantile_map_inner_vonMisesFisherMeasure_eq_iff (hd : 2 ≤ Module.finrank ℝ E)
@@ -344,16 +346,11 @@ theorem quantile_map_inner_vonMisesFisherMeasure_eq_iff (hd : 2 ≤ Module.finra
       x ∈ Ioo (-1) 1 ∧
         (∫ y in (-1)..x, vonMisesFisherProjectionPDFReal (Module.finrank ℝ E) κ y) = u := by
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
-  have hq := quantile_map_inner_vonMisesFisherMeasure_mem_Ioo hd m hκ hu
-  have hroot := Measure.cdf_quantile _
-    (continuous_cdf_map_inner_vonMisesFisherMeasure hd m hκ) hu.1 hu.2
-  constructor
-  · rintro rfl
-    exact ⟨hq, (cdf_map_inner_vonMisesFisherMeasure_eq_integral hd m hκ _).symm.trans hroot⟩
-  · rintro ⟨hx, hxu⟩
-    apply (strictMonoOn_cdf_map_inner_vonMisesFisherMeasure hd m hκ).injOn
-      (Ioo_subset_Icc_self hq) (Ioo_subset_Icc_self hx)
-    rw [hroot, cdf_map_inner_vonMisesFisherMeasure_eq_integral hd m hκ, hxu]
+  simpa only [cdf_map_inner_vonMisesFisherMeasure_eq_integral hd m hκ] using
+    Measure.quantile_eq_iff_of_ae_mem_of_strictMonoOn _ ordConnected_Ioo
+      (ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m)
+      (continuous_cdf_map_inner_vonMisesFisherMeasure hd m hκ)
+      ((strictMonoOn_cdf_map_inner_vonMisesFisherMeasure hd m hκ).mono Ioo_subset_Icc_self) hu
 
 /-- Projection quantiles are strictly increasing at interior levels. -/
 theorem strictMonoOn_quantile_map_inner_vonMisesFisherMeasure (hd : 2 ≤ Module.finrank ℝ E)
@@ -381,7 +378,7 @@ theorem tendsto_quantile_map_inner_vonMisesFisherMeasure_nhdsGT_zero
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
   apply EReal.tendsto_coe.1
   exact Measure.tendsto_quantile_nhdsGT_zero_of_ae_le_of_cdf_pos _
-    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m hκ).mono fun _ hy ↦ hy.1.le)
+    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m).mono fun _ hy ↦ hy.1.le)
     (fun _ hx ↦ (cdf_map_inner_vonMisesFisherMeasure_pos_iff hd m hκ).2 hx)
 
 /-- Projection quantiles tend to the upper support endpoint as the level increases to one. -/
@@ -392,7 +389,7 @@ theorem tendsto_quantile_map_inner_vonMisesFisherMeasure_nhdsLT_one
   have := isProbabilityMeasure_vonMisesFisherMeasure m hκ
   apply EReal.tendsto_coe.1
   exact Measure.tendsto_quantile_nhdsLT_one_of_ae_le_of_cdf_lt_one _
-    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m hκ).mono fun _ hy ↦ hy.2.le)
+    ((ae_mem_Ioo_map_inner_vonMisesFisherMeasure hd m).mono fun _ hy ↦ hy.2.le)
     (fun _ hx ↦ (cdf_map_inner_vonMisesFisherMeasure_lt_one_iff hd m hκ).2 hx)
 
 end TauCeti.Probability
