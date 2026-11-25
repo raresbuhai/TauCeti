@@ -15,6 +15,7 @@ import TauCeti.Analysis.Matrix.L2OpNorm
 import TauCeti.Analysis.Matrix.NonBacktracking
 import TauCeti.Data.Matrix.Block
 import TauCeti.LinearAlgebra.Matrix.Block
+import TauCeti.LinearAlgebra.Matrix.Hermitian
 
 /-!
 # Non-backtracking bounds for the spectrum of a sample covariance matrix
@@ -31,17 +32,19 @@ Bai and Yin's proof that the smallest eigenvalue of a sample covariance matrix t
 The walks live on the Hermitian dilation `H = [[0, Y], [Yᴴ, 0]]`, the weighted bipartite graph
 between rows and columns. Let `T l` be the row block of `Matrix.nonbacktrackingPow H (2 * l)`.
 Since `H` vanishes on its diagonal blocks, only walks alternating between rows and columns carry
-weight in the walk sums of `Matrix.nonbacktrackingPow_apply`, so informally `T l` sums the products
-`Y a₀ v₁ * conj (Y a₁ v₁) * Y a₁ v₂ * ⋯ * conj (Y a_l v_l)` over the alternating paths that
-never step straight back; these are the matrices `T(l)` of Bai and Yin. The results below use
-`T l` only through its definition as a block. Applying the non-backtracking recursion
+weight: by `Matrix.nonbacktrackingPow_fromBlocks_zero₁₁_zero₂₂_apply`, the entries of `T l` sum
+over the non-backtracking walks visiting rows at even times and columns at odd times. So `T l` sums
+the products `Y a₀ v₁ * conj (Y a₁ v₁) * Y a₁ v₂ * ⋯ * conj (Y a_l v_l)` over the alternating
+paths that never step straight back; these are the matrices `T(l)` of Bai and Yin. The results
+below use `T l` only through its definition as a block. Applying the non-backtracking recursion
 `Matrix.nonbacktrackingPow_add_two` twice, and using that `H` exchanges the row and column blocks,
 gives for `M = Y * Yᴴ - (1 + c)` the Chebyshev recursion `M * T 0 ≈ T 1 - c • T 0` and
 `M * T (l + 1) ≈ T (l + 2) + c • T l`. Its errors come from the deviation of the squared row and
 column norms from `1` and `c`, and from the walks that traverse an edge three times in a row,
 whose contributions `Matrix.tendsto_l2_opNorm_nonbacktrackingCorrection` shows to be negligible
-when the entries are small. If `‖T l‖ ≤ C * (l + 1) ^ d * √c ^ l`, iterating the recursion bounds
-`‖M ^ k‖` by `C * (k + 1) ^ d * (2 * √c) ^ k` up to small errors, and
+when the entries are small. If `‖T l‖ ≤ C * (l + 1) ^ d * √c ^ l` up to small errors, iterating
+the recursion (`Matrix.eventually_l2_opNorm_pow_mul_le_of_three_term_recurrence`) bounds `‖M ^ k‖`
+by `C * (k + 1) ^ d * (2 * √c) ^ k` up to small errors, and
 `‖M‖ ^ (2 ^ m) = ‖M ^ (2 ^ m)‖` for the Hermitian matrix `M` turns this into `‖M‖ ≤ 2 * √c`
 asymptotically.
 
@@ -49,7 +52,7 @@ asymptotically.
 
 * `Matrix.eventually_l2_opNorm_mul_conjTranspose_sub_smul_one_le`: along a filter, if the entries
   of `Y` tend to zero and its squared row and column norms tend to `1` and `c ≤ 1` uniformly, and
-  `‖T l‖ ≤ C * (l + 1) ^ d * √c ^ l` eventually for each `l`, then
+  `‖T l‖ ≤ C * (l + 1) ^ d * √c ^ l + δ` eventually for each `l` and `δ > 0`, then
   `‖Y * Yᴴ - (1 + c)‖ ≤ 2 * √c + ε` eventually, for every `ε > 0`.
 * `Matrix.eventually_eigenvalues₀_mul_conjTranspose_mem_Icc`: under the same hypotheses, all
   eigenvalues of `Y * Yᴴ` eventually lie in `[(1 - √c) ^ 2 - ε, (1 + √c) ^ 2 + ε]`.
@@ -159,18 +162,6 @@ private theorem sum_norm_fromBlocks_zero_sq (x : p ⊕ n) :
       Sum.elim (fun a ↦ ∑ v, ‖Y a v‖ ^ 2) (fun v ↦ ∑ a, ‖Y a v‖ ^ 2) x := by
   rcases x with a | v <;> simp [Fintype.sum_sum_type]
 
-omit [DecidableEq p] [DecidableEq n] in
-/-- The degrees `(H * H) x x = ∑ w, H x w * H w x` of the dilation are the squared row norms. -/
-private theorem diag_fromBlocks_zero_mul_self_apply (x : p ⊕ n) :
-    (fromBlocks 0 Y Yᴴ 0 * fromBlocks 0 Y Yᴴ 0).diag x =
-      ((∑ y, ‖fromBlocks 0 Y Yᴴ 0 x y‖ ^ 2 : ℝ) : 𝕜) := by
-  have hH : (fromBlocks 0 Y Yᴴ 0).IsHermitian :=
-    IsHermitian.fromBlocks isHermitian_zero rfl isHermitian_zero
-  rw [diag_apply, Matrix.mul_apply]
-  push_cast
-  refine sum_congr rfl fun w _ ↦ ?_
-  rw [← hH.apply w x, RCLike.star_def, RCLike.mul_conj]
-
 /-- `Y * Yᴴ` is the upper left block of `H * H = B 2 + D` for the dilation `H`, with
 `D = diagonal (H * H).diag`. -/
 private theorem mul_conjTranspose_eq_toBlocks₁₁_add :
@@ -251,9 +242,11 @@ are within `ε` of `1` and its squared column norms within `ε` of `c`. -/
 private theorem norm_diagonal_diag_sub_blockScalar_le {ε : ℝ} (hε : 0 ≤ ε)
     (hr : ∀ a, |∑ v, ‖Y a v‖ ^ 2 - 1| ≤ ε) (hc : ∀ v, |∑ a, ‖Y a v‖ ^ 2 - c| ≤ ε) :
     ‖diagonal (fromBlocks 0 Y Yᴴ 0 * fromBlocks 0 Y Yᴴ 0).diag - blockScalar 1 (c : 𝕜)‖ ≤ ε := by
+  have hH : (fromBlocks 0 Y Yᴴ 0).IsHermitian :=
+    IsHermitian.fromBlocks isHermitian_zero rfl isHermitian_zero
   rw [blockScalar, diagonal_sub]
   refine l2_opNorm_diagonal_le hε fun x ↦ ?_
-  rw [diag_fromBlocks_zero_mul_self_apply, sum_norm_fromBlocks_zero_sq]
+  rw [hH.diag_mul_self_apply, sum_norm_fromBlocks_zero_sq]
   rcases x with a | v
   · simp only [Sum.elim_inl]
     rw [← RCLike.ofReal_one, ← RCLike.ofReal_sub, RCLike.norm_ofReal]
@@ -302,118 +295,6 @@ private theorem l2_opNorm_mul_conjTranspose_sub_smul_one_le {K : ℝ}
 
 end Dilation
 
-section Asymptotics
-
-variable {ι : Type*} {F : Filter ι}
-
-omit [Fintype p] [DecidableEq p] in
-/-- One step of a three-term recursion: `M ^ (k + 1) * X` is `M ^ k * Y + s • (M ^ k * Z)` up to
-`M ^ k` applied to the error of `M * X ≈ Y + s • Z`. -/
-private theorem l2_opNorm_pow_succ_mul_le {m : Type*} [Fintype m] [DecidableEq m]
-    (M X Y Z : Matrix m m 𝕜) (s : ℝ) (k : ℕ) :
-    ‖M ^ (k + 1) * X‖ ≤ ‖M ^ k * Y‖ + |s| * ‖M ^ k * Z‖ + ‖M‖ ^ k * ‖M * X - (Y + s • Z)‖ := by
-  have hsplit : M ^ (k + 1) * X = M ^ k * Y + s • (M ^ k * Z) + M ^ k * (M * X - (Y + s • Z)) := by
-    rw [pow_succ, Matrix.mul_assoc, mul_sub, mul_add, Matrix.mul_smul]
-    abel
-  rw [hsplit]
-  refine (norm_add_le _ _).trans (add_le_add ((norm_add_le _ _).trans_eq ?_)
-    ((norm_mul_le _ _).trans (mul_le_mul_of_nonneg_right (l2_opNorm_pow_le _ k) (norm_nonneg _))))
-  rw [RCLike.real_smul_eq_coe_smul (K := 𝕜), norm_smul, RCLike.norm_ofReal]
-
-/-- The bound `C * (j + k + 1) ^ d * ρ ^ j * σ ^ k`, with `σ = ρ + c / ρ`, absorbs one step of the
-recursion `M * T (j + 1) ≈ T (j + 2) + c • T j`, since
-`ρ ^ (j + 2) + c * ρ ^ j = ρ ^ (j + 1) * σ`. -/
-private theorem bound_add_two_add_mul_bound_le {C ρ c : ℝ} {d : ℕ} (hC : 0 ≤ C) (hρ : 0 < ρ)
-    (hc : 0 ≤ c) (j k : ℕ) :
-    C * (((j + 2 : ℕ) : ℝ) + k + 1) ^ d * ρ ^ (j + 2) * (ρ + c / ρ) ^ k +
-        c * (C * ((j : ℝ) + k + 1) ^ d * ρ ^ j * (ρ + c / ρ) ^ k) ≤
-      C * (((j + 1 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) ^ d * ρ ^ (j + 1) *
-        (ρ + c / ρ) ^ (k + 1) := by
-  have hρσ : ρ * (ρ + c / ρ) = ρ ^ 2 + c := by field_simp
-  set σ := ρ + c / ρ
-  set X : ℝ := (j : ℝ) + k + 3
-  have hQ : ((j : ℝ) + k + 1) ^ d ≤ X ^ d := by gcongr; simp only [X]; linarith
-  have hc' : c * (C * ((j : ℝ) + k + 1) ^ d * ρ ^ j * σ ^ k) ≤ c * (C * X ^ d * ρ ^ j * σ ^ k) := by
-    gcongr
-  have e1 : (((j + 2 : ℕ) : ℝ) + k + 1) = X := by push_cast; ring
-  have e2 : (((j + 1 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) = X := by push_cast; ring
-  have e3 : C * X ^ d * ρ ^ (j + 1) * σ ^ (k + 1) = C * X ^ d * ρ ^ j * σ ^ k * (ρ * σ) := by ring
-  have e4 : C * X ^ d * ρ ^ (j + 2) * σ ^ k = C * X ^ d * ρ ^ j * σ ^ k * ρ ^ 2 := by ring
-  rw [e1, e2, e3, e4, hρσ]
-  linarith
-
-/-- At `j = 0` the recursion is `M * T 0 ≈ T 1 - c • T 0`, and the bound absorbs the step because
-`ρ + c ≤ ρ + c / ρ` for `ρ ≤ 1`. -/
-private theorem bound_one_add_mul_bound_le {C ρ c : ℝ} {d : ℕ} (hC : 0 ≤ C) (hρ₀ : 0 < ρ)
-    (hρ₁ : ρ ≤ 1) (hc : 0 ≤ c) (k : ℕ) :
-    C * (((1 : ℕ) : ℝ) + k + 1) ^ d * ρ ^ 1 * (ρ + c / ρ) ^ k +
-        c * (C * (((0 : ℕ) : ℝ) + k + 1) ^ d * ρ ^ 0 * (ρ + c / ρ) ^ k) ≤
-      C * (((0 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) ^ d * ρ ^ 0 * (ρ + c / ρ) ^ (k + 1) := by
-  have hρc : ρ + c ≤ ρ + c / ρ := by linarith [le_div_self hc hρ₀ hρ₁]
-  set σ := ρ + c / ρ
-  have hQ : ((k : ℝ) + 1) ^ d ≤ ((k : ℝ) + 2) ^ d := by gcongr; linarith
-  have hP : 0 ≤ C * ((k : ℝ) + 2) ^ d * σ ^ k := by positivity
-  have hc' : c * (C * ((k : ℝ) + 1) ^ d * σ ^ k) ≤ c * (C * ((k : ℝ) + 2) ^ d * σ ^ k) := by
-    gcongr
-  have hσ' := mul_le_mul_of_nonneg_left hρc hP
-  have e1 : (((1 : ℕ) : ℝ) + k + 1) = (k : ℝ) + 2 := by push_cast; ring
-  have e2 : (((0 : ℕ) : ℝ) + k + 1) = (k : ℝ) + 1 := by push_cast; ring
-  have e3 : (((0 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) = (k : ℝ) + 2 := by push_cast; ring
-  rw [e1, e2, e3, pow_zero, pow_one, mul_one, mul_one, pow_succ]
-  nlinarith
-
-omit [Fintype p] [DecidableEq p] in
-/-- **Powers through an approximate three-term recursion.** Let `0 ≤ c`, `0 < ρ ≤ 1` and
-`σ = ρ + c / ρ`. Suppose that, along a filter, `‖M‖` is eventually bounded, each `T j` eventually
-has norm at most `C * (j + 1) ^ d * ρ ^ j`, and the recursion `M * T 0 = T 1 - c • T 0`,
-`M * T (j + 1) = T (j + 2) + c • T j` holds up to errors tending to zero. Then for all `k` and `j`,
-eventually `‖M ^ k * T j‖ ≤ C * (j + k + 1) ^ d * ρ ^ j * σ ^ k + δ`, for every `δ > 0`. -/
-private theorem eventually_l2_opNorm_pow_mul_le {m : ι → Type*} [∀ i, Fintype (m i)]
-    [∀ i, DecidableEq (m i)] {M : (i : ι) → Matrix (m i) (m i) 𝕜}
-    {T : (i : ι) → ℕ → Matrix (m i) (m i) 𝕜} {c ρ C R : ℝ} {d : ℕ} (hc : 0 ≤ c) (hρ₀ : 0 < ρ)
-    (hρ₁ : ρ ≤ 1) (hC : 0 ≤ C) (hR : 0 ≤ R) (hM : ∀ᶠ i in F, ‖M i‖ ≤ R)
-    (hT : ∀ j, ∀ᶠ i in F, ‖T i j‖ ≤ C * ((j : ℝ) + 1) ^ d * ρ ^ j)
-    (h0 : ∀ δ > 0, ∀ᶠ i in F, ‖M i * T i 0 - (T i 1 - c • T i 0)‖ ≤ δ)
-    (hs : ∀ j, ∀ δ > 0, ∀ᶠ i in F, ‖M i * T i (j + 1) - (T i (j + 2) + c • T i j)‖ ≤ δ)
-    (k j : ℕ) {δ : ℝ} (hδ : 0 < δ) :
-    ∀ᶠ i in F, ‖M i ^ k * T i j‖ ≤
-      C * ((j : ℝ) + k + 1) ^ d * ρ ^ j * (ρ + c / ρ) ^ k + δ := by
-  induction k generalizing j δ with
-  | zero =>
-    filter_upwards [hT j] with i hi
-    simp only [pow_zero, Matrix.one_mul, mul_one, Nat.cast_zero, add_zero]
-    linarith
-  | succ k ih =>
-    -- Split the error budget between the two earlier bounds and the recursion error.
-    set δ₁ := δ / (2 * (1 + c))
-    set δ₂ := δ / (2 * (R ^ k + 1))
-    have hδ₁ : 0 < δ₁ := by positivity
-    have hδ₂ : 0 < δ₂ := by positivity
-    have herr : δ₁ + c * δ₁ + R ^ k * δ₂ ≤ δ := by
-      have h1 : δ₁ + c * δ₁ = δ / 2 := by simp only [δ₁]; field_simp
-      have h2 : R ^ k * δ₂ ≤ δ / 2 := by
-        simp only [δ₂]
-        rw [mul_div_assoc', div_le_div_iff₀ (by positivity) two_pos]
-        nlinarith [pow_nonneg hR k]
-      linarith
-    rcases j with _ | j
-    · filter_upwards [ih 1 hδ₁, ih 0 hδ₁, h0 δ₂ hδ₂, hM] with i h1 h0' hd hMi
-      have hstep := l2_opNorm_pow_succ_mul_le (M i) (T i 0) (T i 1) (T i 0) (-c) k
-      rw [neg_smul, ← sub_eq_add_neg, abs_neg, abs_of_nonneg hc] at hstep
-      have hMk : ‖M i‖ ^ k * ‖M i * T i 0 - (T i 1 - c • T i 0)‖ ≤ R ^ k * δ₂ :=
-        mul_le_mul (pow_le_pow_left₀ (norm_nonneg _) hMi k) hd (norm_nonneg _) (by positivity)
-      have := bound_one_add_mul_bound_le hC hρ₀ hρ₁ hc (d := d) k
-      nlinarith
-    · filter_upwards [ih (j + 2) hδ₁, ih j hδ₁, hs j δ₂ hδ₂, hM] with i h2 h0' hd hMi
-      have hstep := l2_opNorm_pow_succ_mul_le (M i) (T i (j + 1)) (T i (j + 2)) (T i j) c k
-      rw [abs_of_nonneg hc] at hstep
-      have hMk : ‖M i‖ ^ k * ‖M i * T i (j + 1) - (T i (j + 2) + c • T i j)‖ ≤ R ^ k * δ₂ :=
-        mul_le_mul (pow_le_pow_left₀ (norm_nonneg _) hMi k) hd (norm_nonneg _) (by positivity)
-      have := bound_add_two_add_mul_bound_le hC hρ₀ hc (d := d) j k
-      nlinarith
-
-end Asymptotics
-
 
 /-- The growth rate `ρ + c / ρ` of the recursion is below `2 * √c + ε` for
 `ρ = max √c (min 1 (ε / 4))`. -/
@@ -440,12 +321,14 @@ private theorem eventually_l2_opNorm_mul_conjTranspose_le {K : ℝ}
     (hT1 : ∀ᶠ i in F, ‖(nonbacktrackingPow (fromBlocks 0 (Y i) (Y i)ᴴ 0) 2).toBlocks₁₁‖ ≤ K) :
     ∀ᶠ i in F, ‖Y i * (Y i)ᴴ‖ ≤ K + 2 := by
   filter_upwards [hT1, hdeg] with i hT1 hdi
+  have hH : (fromBlocks 0 (Y i) (Y i)ᴴ 0).IsHermitian :=
+    IsHermitian.fromBlocks isHermitian_zero rfl isHermitian_zero
   have hD : ‖(diagonal (fromBlocks 0 (Y i) (Y i)ᴴ 0 *
       fromBlocks 0 (Y i) (Y i)ᴴ 0).diag).toBlocks₁₁‖ ≤ 2 := by
     rw [toBlocks₁₁_eq_submatrix]
     refine (l2_opNorm_submatrix_le _ Sum.inl_injective Sum.inl_injective).trans
       (l2_opNorm_diagonal_le zero_le_two fun x ↦ ?_)
-    rw [diag_fromBlocks_zero_mul_self_apply, RCLike.norm_ofReal,
+    rw [hH.diag_mul_self_apply, RCLike.norm_ofReal,
       abs_of_nonneg (sum_nonneg fun _ _ ↦ by positivity)]
     exact hdi x
   rw [mul_conjTranspose_eq_toBlocks₁₁_add]
@@ -495,26 +378,25 @@ private theorem eventually_norm_mul_toBlocks₁₁_sub_le [∀ i, Fintype (n i)]
 whose entries tend to zero uniformly, whose rows have squared norms tending to `1` uniformly and
 whose columns have squared norms tending to `c ∈ [0, 1]` uniformly. Suppose that the row blocks
 `T l` of the non-backtracking walk matrices of length `2 * l` of the Hermitian dilations
-`[[0, Y], [Yᴴ, 0]]` are eventually bounded by `C * (l + 1) ^ d * √c ^ l`, for constants `C` and `d`
-independent of `l`. Then `‖Y * Yᴴ - (1 + c)‖ ≤ 2 * √c + ε` eventually, for every `ε > 0`. -/
+`[[0, Y], [Yᴴ, 0]]` are eventually bounded by `C * (l + 1) ^ d * √c ^ l + δ` for every `δ > 0`, for
+constants `C` and `d` independent of `l`. Then `‖Y * Yᴴ - (1 + c)‖ ≤ 2 * √c + ε` eventually, for
+every `ε > 0`. -/
 theorem eventually_l2_opNorm_mul_conjTranspose_sub_smul_one_le {c : ℝ≥0} (hc : c ≤ 1)
     (hentry : ∀ ε > 0, ∀ᶠ i in F, ∀ a v, ‖Y i a v‖ ≤ ε)
     (hrow : ∀ ε > 0, ∀ᶠ i in F, ∀ a, |∑ v, ‖Y i a v‖ ^ 2 - 1| ≤ ε)
     (hcol : ∀ ε > 0, ∀ᶠ i in F, ∀ v, |∑ a, ‖Y i a v‖ ^ 2 - c| ≤ ε)
-    (hT : ∃ (C : ℝ) (d : ℕ), ∀ l : ℕ, ∀ᶠ i in F,
+    (hT : ∃ (C : ℝ) (d : ℕ), ∀ l : ℕ, ∀ δ > 0, ∀ᶠ i in F,
       ‖(nonbacktrackingPow (fromBlocks 0 (Y i) (Y i)ᴴ 0) (2 * l)).toBlocks₁₁‖ ≤
-        C * ((l : ℝ) + 1) ^ d * √c ^ l) :
+        C * ((l : ℝ) + 1) ^ d * √c ^ l + δ) :
     ∀ ε > 0, ∀ᶠ i in F, ‖Y i * (Y i)ᴴ - (1 + (c : ℝ)) • 1‖ ≤ 2 * √c + ε := by
   have hc₀ : (0 : ℝ) ≤ c := c.coe_nonneg
   have hc₁ : (c : ℝ) ≤ 1 := by exact_mod_cast hc
   obtain ⟨C₀, d, hT₀⟩ := hT
   set C := max C₀ 0
-  have hC : 0 ≤ C := le_max_right _ _
-  have hT : ∀ l : ℕ, ∀ᶠ i in F,
+  have hT : ∀ l : ℕ, ∀ δ > 0, ∀ᶠ i in F,
       ‖(nonbacktrackingPow (fromBlocks 0 (Y i) (Y i)ᴴ 0) (2 * l)).toBlocks₁₁‖ ≤
-        C * ((l : ℝ) + 1) ^ d * √c ^ l := fun l ↦ (hT₀ l).mono fun i hi ↦ hi.trans <|
-    mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_right (le_max_left _ _) (by positivity))
-      (by positivity)
+        C * ((l : ℝ) + 1) ^ d * √c ^ l + δ := fun l δ hδ ↦ (hT₀ l δ hδ).mono fun i hi ↦
+    hi.trans <| by gcongr; exact le_max_left _ _
   -- The dilations have small entries, bounded degrees and degrees close to `diag(1, c)`.
   have hdeg : ∀ᶠ i in F, ∀ x, ∑ y, ‖fromBlocks 0 (Y i) (Y i)ᴴ 0 x y‖ ^ 2 ≤ 2 := by
     filter_upwards [hrow 1 one_pos, hcol 1 one_pos] with i hr hcl
@@ -525,9 +407,9 @@ theorem eventually_l2_opNorm_mul_conjTranspose_sub_smul_one_le {c : ℝ≥0} (hc
     filter_upwards [hrow η hη, hcol η hη] with i hr hcl
     exact norm_diagonal_diag_sub_blockScalar_le (Y i) c hη.le hr hcl
   -- `‖Y * Yᴴ‖` and the dilations are eventually bounded.
-  set K := C * 2 ^ d * √c + 2
-  have hYY := eventually_l2_opNorm_mul_conjTranspose_le (K := C * 2 ^ d * √c) hdeg
-    ((hT 1).mono fun i hi ↦ by simpa [one_add_one_eq_two] using hi)
+  set K := C * 2 ^ d * √c + 1 + 2
+  have hYY := eventually_l2_opNorm_mul_conjTranspose_le (K := C * 2 ^ d * √c + 1) hdeg
+    ((hT 1 1 one_pos).mono fun i hi ↦ by simpa [one_add_one_eq_two] using hi)
   set R := 2 * max 1 K
   have hR : 0 ≤ R := by positivity
   have hH : ∀ᶠ i in F, ‖fromBlocks 0 (Y i) (Y i)ᴴ 0‖ ≤ R :=
@@ -541,9 +423,9 @@ theorem eventually_l2_opNorm_mul_conjTranspose_sub_smul_one_le {c : ℝ≥0} (hc
   have hρ₁ : ρ ≤ 1 := max_le (Real.sqrt_le_one.mpr hc₁) (min_le_left _ _)
   have hM : ∀ᶠ i in F, ‖Y i * (Y i)ᴴ - (1 + (c : ℝ)) • 1‖ ≤ K + 2 :=
     hYY.mono fun i hi ↦ l2_opNorm_mul_conjTranspose_sub_smul_one_le (Y i) hi hc₀ hc₁
-  have hcheb := eventually_l2_opNorm_pow_mul_le (T := fun i l ↦
-      (nonbacktrackingPow (fromBlocks 0 (Y i) (Y i)ᴴ 0) (2 * l)).toBlocks₁₁) hc₀ hρ₀ hρ₁ hC
-    (by positivity) hM (fun j ↦ (hT j).mono fun i hi ↦ hi.trans (by gcongr; exact le_max_left _ _))
+  have hcheb := eventually_l2_opNorm_pow_mul_le_of_three_term_recurrence (T := fun i l ↦
+      (nonbacktrackingPow (fromBlocks 0 (Y i) (Y i)ᴴ 0) (2 * l)).toBlocks₁₁) hc₀ hρ₀ hρ₁ hM
+    (fun j δ hδ ↦ (hT j δ hδ).mono fun i hi ↦ hi.trans (by gcongr; exact le_max_left _ _))
     (fun δ hδ ↦ (hDdev δ hδ).mono fun i hi ↦
       (norm_mul_toBlocks₁₁_nonbacktrackingPow_zero_sub_le (Y i) c).trans hi)
     fun j δ hδ ↦ eventually_norm_mul_toBlocks₁₁_sub_le hc₀ hc₁ hR hDdev hdeg hent hH j hδ
@@ -561,9 +443,9 @@ theorem eventually_eigenvalues₀_mul_conjTranspose_mem_Icc {c : ℝ≥0} (hc : 
     (hentry : ∀ ε > 0, ∀ᶠ i in F, ∀ a v, ‖Y i a v‖ ≤ ε)
     (hrow : ∀ ε > 0, ∀ᶠ i in F, ∀ a, |∑ v, ‖Y i a v‖ ^ 2 - 1| ≤ ε)
     (hcol : ∀ ε > 0, ∀ᶠ i in F, ∀ v, |∑ a, ‖Y i a v‖ ^ 2 - c| ≤ ε)
-    (hT : ∃ (C : ℝ) (d : ℕ), ∀ l : ℕ, ∀ᶠ i in F,
+    (hT : ∃ (C : ℝ) (d : ℕ), ∀ l : ℕ, ∀ δ > 0, ∀ᶠ i in F,
       ‖(nonbacktrackingPow (fromBlocks 0 (Y i) (Y i)ᴴ 0) (2 * l)).toBlocks₁₁‖ ≤
-        C * ((l : ℝ) + 1) ^ d * √c ^ l) :
+        C * ((l : ℝ) + 1) ^ d * √c ^ l + δ) :
     ∀ ε > 0, ∀ᶠ i in F, ∀ k, (isHermitian_mul_conjTranspose_self (Y i)).eigenvalues₀ k ∈
       Set.Icc ((1 - √c) ^ 2 - ε) ((1 + √c) ^ 2 + ε) := by
   intro ε hε

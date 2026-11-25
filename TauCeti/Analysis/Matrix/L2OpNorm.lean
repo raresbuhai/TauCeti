@@ -39,6 +39,9 @@ rather than restricting scalars, so that no algebra diamond arises.
   operator norm at most the sum of the norms of its off-diagonal blocks.
 * `Matrix.eventually_l2_opNorm_le_of_forall_pow`: along a filter, growth bounds on the norms of
   the powers of Hermitian matrices bound their norms.
+* `Matrix.eventually_l2_opNorm_pow_mul_le_of_three_term_recurrence`: along a filter, if
+  `M * T 0 ≈ T 1 - c • T 0` and `M * T (j + 1) ≈ T (j + 2) + c • T j`, and `‖T j‖` grows at most
+  like `ρ ^ j` for some `ρ ≤ 1`, then `‖M ^ k * T j‖` grows at most like `ρ ^ j * (ρ + c / ρ) ^ k`.
 * `Matrix.sum_sum_norm_sq_le_card_mul_l2_opNorm_sq`: a Frobenius bound by the operator norm, and
   `Matrix.sum_norm_sq_le_l2_opNorm_sq`: a bound on the squared norm of each row.
 * `Matrix.l2_opNorm_sub_diagonal_diag_le`: zeroing the diagonal of a square matrix at most doubles
@@ -194,6 +197,117 @@ theorem eventually_l2_opNorm_le_of_forall_pow {ι : Type*} {F : Filter ι} {m : 
   refine le_of_pow_le_pow_left₀ (n := k) (pow_ne_zero (N + 1) two_ne_zero) (hs.trans hst).le ?_
   rw [hpow]
   linarith
+
+/-- One step of a three-term recurrence: `M ^ (k + 1) * X` is `M ^ k * Y + s • (M ^ k * Z)` up to
+`M ^ k` applied to the error of `M * X ≈ Y + s • Z`. -/
+private theorem l2_opNorm_pow_succ_mul_le (M X Y Z : Matrix n n 𝕜) (s : ℝ) (k : ℕ) :
+    ‖M ^ (k + 1) * X‖ ≤ ‖M ^ k * Y‖ + |s| * ‖M ^ k * Z‖ + ‖M‖ ^ k * ‖M * X - (Y + s • Z)‖ := by
+  have hsplit : M ^ (k + 1) * X = M ^ k * Y + s • (M ^ k * Z) + M ^ k * (M * X - (Y + s • Z)) := by
+    rw [pow_succ, Matrix.mul_assoc, mul_sub, mul_add, Matrix.mul_smul]
+    abel
+  rw [hsplit]
+  refine (norm_add_le _ _).trans (add_le_add ((norm_add_le _ _).trans_eq ?_)
+    ((norm_mul_le _ _).trans (mul_le_mul_of_nonneg_right (l2_opNorm_pow_le _ k) (norm_nonneg _))))
+  rw [RCLike.real_smul_eq_coe_smul (K := 𝕜), norm_smul, RCLike.norm_ofReal]
+
+/-- The bound `C * (j + k + 1) ^ d * ρ ^ j * σ ^ k`, with `σ = ρ + c / ρ`, absorbs one step of the
+recurrence `M * T (j + 1) ≈ T (j + 2) + c • T j`, since
+`ρ ^ (j + 2) + c * ρ ^ j = ρ ^ (j + 1) * σ`. -/
+private theorem bound_add_two_add_mul_bound_le {C ρ c : ℝ} {d : ℕ} (hC : 0 ≤ C) (hρ : 0 < ρ)
+    (hc : 0 ≤ c) (j k : ℕ) :
+    C * (((j + 2 : ℕ) : ℝ) + k + 1) ^ d * ρ ^ (j + 2) * (ρ + c / ρ) ^ k +
+        c * (C * ((j : ℝ) + k + 1) ^ d * ρ ^ j * (ρ + c / ρ) ^ k) ≤
+      C * (((j + 1 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) ^ d * ρ ^ (j + 1) *
+        (ρ + c / ρ) ^ (k + 1) := by
+  have hρσ : ρ * (ρ + c / ρ) = ρ ^ 2 + c := by field_simp
+  set σ := ρ + c / ρ
+  set X : ℝ := (j : ℝ) + k + 3
+  have hQ : ((j : ℝ) + k + 1) ^ d ≤ X ^ d := by gcongr; simp only [X]; linarith
+  have hc' : c * (C * ((j : ℝ) + k + 1) ^ d * ρ ^ j * σ ^ k) ≤ c * (C * X ^ d * ρ ^ j * σ ^ k) := by
+    gcongr
+  have e1 : (((j + 2 : ℕ) : ℝ) + k + 1) = X := by push_cast; ring
+  have e2 : (((j + 1 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) = X := by push_cast; ring
+  have e3 : C * X ^ d * ρ ^ (j + 1) * σ ^ (k + 1) = C * X ^ d * ρ ^ j * σ ^ k * (ρ * σ) := by ring
+  have e4 : C * X ^ d * ρ ^ (j + 2) * σ ^ k = C * X ^ d * ρ ^ j * σ ^ k * ρ ^ 2 := by ring
+  rw [e1, e2, e3, e4, hρσ]
+  linarith
+
+/-- At `j = 0` the recurrence is `M * T 0 ≈ T 1 - c • T 0`, and the bound absorbs the step because
+`ρ + c ≤ ρ + c / ρ` for `ρ ≤ 1`. -/
+private theorem bound_one_add_mul_bound_le {C ρ c : ℝ} {d : ℕ} (hC : 0 ≤ C) (hρ₀ : 0 < ρ)
+    (hρ₁ : ρ ≤ 1) (hc : 0 ≤ c) (k : ℕ) :
+    C * (((1 : ℕ) : ℝ) + k + 1) ^ d * ρ ^ 1 * (ρ + c / ρ) ^ k +
+        c * (C * (((0 : ℕ) : ℝ) + k + 1) ^ d * ρ ^ 0 * (ρ + c / ρ) ^ k) ≤
+      C * (((0 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) ^ d * ρ ^ 0 * (ρ + c / ρ) ^ (k + 1) := by
+  have hρc : ρ + c ≤ ρ + c / ρ := by linarith [le_div_self hc hρ₀ hρ₁]
+  set σ := ρ + c / ρ
+  have hQ : ((k : ℝ) + 1) ^ d ≤ ((k : ℝ) + 2) ^ d := by gcongr; linarith
+  have hP : 0 ≤ C * ((k : ℝ) + 2) ^ d * σ ^ k := by positivity
+  have hc' : c * (C * ((k : ℝ) + 1) ^ d * σ ^ k) ≤ c * (C * ((k : ℝ) + 2) ^ d * σ ^ k) := by
+    gcongr
+  have hσ' := mul_le_mul_of_nonneg_left hρc hP
+  have e1 : (((1 : ℕ) : ℝ) + k + 1) = (k : ℝ) + 2 := by push_cast; ring
+  have e2 : (((0 : ℕ) : ℝ) + k + 1) = (k : ℝ) + 1 := by push_cast; ring
+  have e3 : (((0 : ℕ) : ℝ) + ((k + 1 : ℕ) : ℝ) + 1) = (k : ℝ) + 2 := by push_cast; ring
+  rw [e1, e2, e3, pow_zero, pow_one, mul_one, mul_one, pow_succ]
+  nlinarith
+
+/-- **Powers through an approximate three-term recurrence.** Let `0 ≤ c`, `0 < ρ ≤ 1` and
+`σ = ρ + c / ρ`. Suppose that, along a filter, `‖M‖` is eventually bounded, for every `δ > 0` each
+`T j` eventually has norm at most `C * (j + 1) ^ d * ρ ^ j + δ`, and the recurrence
+`M * T 0 = T 1 - c • T 0`, `M * T (j + 1) = T (j + 2) + c • T j` holds up to errors tending to
+zero. Then for all `k` and `j` and every `δ > 0`, eventually
+`‖M ^ k * T j‖ ≤ C * (j + k + 1) ^ d * ρ ^ j * σ ^ k + δ`. -/
+theorem eventually_l2_opNorm_pow_mul_le_of_three_term_recurrence {ι : Type*} {F : Filter ι}
+    {m : ι → Type*} [∀ i, Fintype (m i)] [∀ i, DecidableEq (m i)]
+    {M : (i : ι) → Matrix (m i) (m i) 𝕜} {T : (i : ι) → ℕ → Matrix (m i) (m i) 𝕜} {c ρ C R : ℝ}
+    {d : ℕ} (hc : 0 ≤ c) (hρ₀ : 0 < ρ) (hρ₁ : ρ ≤ 1) (hM : ∀ᶠ i in F, ‖M i‖ ≤ R)
+    (hT : ∀ j, ∀ δ > 0, ∀ᶠ i in F, ‖T i j‖ ≤ C * ((j : ℝ) + 1) ^ d * ρ ^ j + δ)
+    (h0 : ∀ δ > 0, ∀ᶠ i in F, ‖M i * T i 0 - (T i 1 - c • T i 0)‖ ≤ δ)
+    (hs : ∀ j, ∀ δ > 0, ∀ᶠ i in F, ‖M i * T i (j + 1) - (T i (j + 2) + c • T i j)‖ ≤ δ)
+    (k j : ℕ) {δ : ℝ} (hδ : 0 < δ) :
+    ∀ᶠ i in F, ‖M i ^ k * T i j‖ ≤
+      C * ((j : ℝ) + k + 1) ^ d * ρ ^ j * (ρ + c / ρ) ^ k + δ := by
+  -- Enlarging `R` to `max R 0` keeps `hM`.
+  obtain ⟨R, hR, hM⟩ : ∃ R' ≥ 0, ∀ᶠ i in F, ‖M i‖ ≤ R' :=
+    ⟨max R 0, le_max_right _ _, hM.mono fun i hi ↦ hi.trans (le_max_left _ _)⟩
+  -- For `C < 0` the bound `hT` on `T 0` cannot hold, so the filter is trivial.
+  rcases lt_or_ge C 0 with hC | hC
+  · filter_upwards [hT 0 (-C / 2) (by linarith)] with i hi
+    simp only [Nat.cast_zero, zero_add, one_pow, mul_one, pow_zero] at hi
+    linarith [norm_nonneg (T i 0)]
+  induction k generalizing j δ with
+  | zero =>
+    filter_upwards [hT j δ hδ] with i hi
+    simpa only [pow_zero, Matrix.one_mul, mul_one, Nat.cast_zero, add_zero] using hi
+  | succ k ih =>
+    -- Split the error budget between the two earlier bounds and the recurrence error.
+    set δ₁ := δ / (2 * (1 + c))
+    set δ₂ := δ / (2 * (R ^ k + 1))
+    have hδ₁ : 0 < δ₁ := by positivity
+    have hδ₂ : 0 < δ₂ := by positivity
+    have herr : δ₁ + c * δ₁ + R ^ k * δ₂ ≤ δ := by
+      have h1 : δ₁ + c * δ₁ = δ / 2 := by simp only [δ₁]; field_simp
+      have h2 : R ^ k * δ₂ ≤ δ / 2 := by
+        simp only [δ₂]
+        rw [mul_div_assoc', div_le_div_iff₀ (by positivity) two_pos]
+        nlinarith [pow_nonneg hR k]
+      linarith
+    rcases j with _ | j
+    · filter_upwards [ih 1 hδ₁, ih 0 hδ₁, h0 δ₂ hδ₂, hM] with i h1 h0' hd hMi
+      have hstep := l2_opNorm_pow_succ_mul_le (M i) (T i 0) (T i 1) (T i 0) (-c) k
+      rw [neg_smul, ← sub_eq_add_neg, abs_neg, abs_of_nonneg hc] at hstep
+      have hMk : ‖M i‖ ^ k * ‖M i * T i 0 - (T i 1 - c • T i 0)‖ ≤ R ^ k * δ₂ :=
+        mul_le_mul (pow_le_pow_left₀ (norm_nonneg _) hMi k) hd (norm_nonneg _) (by positivity)
+      have := bound_one_add_mul_bound_le hC hρ₀ hρ₁ hc (d := d) k
+      nlinarith
+    · filter_upwards [ih (j + 2) hδ₁, ih j hδ₁, hs j δ₂ hδ₂, hM] with i h2 h0' hd hMi
+      have hstep := l2_opNorm_pow_succ_mul_le (M i) (T i (j + 1)) (T i (j + 2)) (T i j) c k
+      rw [abs_of_nonneg hc] at hstep
+      have hMk : ‖M i‖ ^ k * ‖M i * T i (j + 1) - (T i (j + 2) + c • T i j)‖ ≤ R ^ k * δ₂ :=
+        mul_le_mul (pow_le_pow_left₀ (norm_nonneg _) hMi k) hd (norm_nonneg _) (by positivity)
+      have := bound_add_two_add_mul_bound_le hC hρ₀ hc (d := d) j k
+      nlinarith
 
 /-- The squared Frobenius norm of a rectangular matrix is at most its number of rows times
 its squared Euclidean operator norm. Empty row and column types are allowed. -/

@@ -5,7 +5,7 @@ Authors: The Tau Ceti contributors
 -/
 module
 
-public import Mathlib.Data.Matrix.Mul
+public import Mathlib.Data.Matrix.Block
 import Mathlib.Algebra.BigOperators.Fin
 import Mathlib.Tactic.Abel
 
@@ -22,11 +22,12 @@ near `c`.
 
 Walk matrices of this kind satisfy a three-term recursion. A walk of length `k + 2` is a walk of
 length `k + 1` with one more step in front, except that the new step must not be undone by the
-next one. The correction subtracts the walks that step forward and straight back. A second
-correction returns the walks that step forward, back and forward again along the same edge, which
-the first correction removed twice. To keep the recursion closed, `Matrix.nonbacktrackingMul G H k`
-weighs the first step by a second matrix `G` and continues with a non-backtracking walk of `H`
-of length `k` that does not undo it.
+next one. The correction subtracts every step forward and straight back followed by a
+non-backtracking walk of length `k`. These include the walks that step forward, back and forward
+again along the same edge, which the uncorrected sum never counted, since they step straight back
+at their third step; a second correction adds them back. To keep the recursion closed,
+`Matrix.nonbacktrackingMul G H k` weighs the first step by a second matrix `G` and continues with a
+non-backtracking walk of `H` of length `k` that does not undo it.
 
 ## Main definitions
 
@@ -39,6 +40,11 @@ of length `k` that does not undo it.
 
 * `Matrix.nonbacktrackingPow_apply` and `Matrix.nonbacktrackingMul_apply`: the entries of
   `nonbacktrackingPow H k` and `nonbacktrackingMul G H k` are sums over non-backtracking walks.
+* `Matrix.nonbacktrackingPow_fromBlocks_zero₁₁_zero₂₂_apply`: for a block matrix with zero
+  diagonal blocks, such as the Hermitian dilation of a rectangular matrix, only the walks
+  alternating between the two blocks of indices contribute.
+* `Matrix.nonbacktrackingMul_add_left` and `Matrix.nonbacktrackingMul_smul_left`:
+  `nonbacktrackingMul G H k` is additive and equivariant in the weights `G`.
 * `Matrix.nonbacktrackingMul_add_two`: writing `B k` for `nonbacktrackingPow H k` and `G ⋆ B k`
   for `nonbacktrackingMul G H k`, the recursion
   `G ⋆ B (k + 2) = G * B (k + 2) - D_G * B (k + 1) + G' ⋆ B k`, where
@@ -130,6 +136,28 @@ theorem nonbacktrackingCorrection_succ (H : Matrix ι ι R) (k : ℕ) :
       nonbacktrackingMul (of fun i w ↦ H i w * (H w i * H i w)) H k :=
   (rfl)
 
+/-- With zero weights on the first step, all weighted walks vanish. -/
+@[simp]
+theorem nonbacktrackingMul_zero_left (H : Matrix ι ι R) (k : ℕ) : nonbacktrackingMul 0 H k = 0 := by
+  ext i j
+  simp [nonbacktrackingMul]
+
+/-- The weighted walk matrix is additive in the weights of the first step. -/
+theorem nonbacktrackingMul_add_left (G₁ G₂ H : Matrix ι ι R) (k : ℕ) :
+    nonbacktrackingMul (G₁ + G₂) H k = nonbacktrackingMul G₁ H k + nonbacktrackingMul G₂ H k := by
+  ext i j
+  simp [nonbacktrackingMul, add_mul, sum_add_distrib]
+
+/-- Scaling the weights of the first step scales the weighted walk matrix. -/
+theorem nonbacktrackingMul_smul_left {S : Type*} [SMul S R] [IsScalarTower S R R] (a : S)
+    (G H : Matrix ι ι R) (k : ℕ) :
+    nonbacktrackingMul (a • G) H k = a • nonbacktrackingMul G H k := by
+  ext i j
+  -- The scalar tower makes `a • y = (a • 1) * y`, which distributes over the sum.
+  simp only [nonbacktrackingMul, of_apply, Matrix.smul_apply, smul_mul_assoc]
+  rw [← smul_one_mul a, mul_sum]
+  exact sum_congr rfl fun w _ ↦ (smul_one_mul a _).symm
+
 end Semiring
 
 section Ring
@@ -145,9 +173,11 @@ private theorem nonbacktrackingAux_succ_some (H : Matrix ι ι R) (k : ℕ) (f w
   rw [filter_ne', sum_erase_eq_sub (mem_univ f)]
 
 /-- **The recursion for a weighted first step.** The non-backtracking walks of length `k + 2`
-after a step weighted by `G` are all the walks after that step, minus those stepping straight
-back, which carry the weight `D_G i = ∑ w, G i w * H w i`, plus those stepping back and then
-forward along the same edge again, which were subtracted twice. -/
+after a step weighted by `G` are all the non-backtracking walks of length `k + 2` after that step,
+minus a step straight back, with the weight `D_G i = ∑ w, G i w * H w i`, followed by any
+non-backtracking walk of length `k + 1`. This subtraction also removes the walks that step back and
+then forward along the same edge again, which the first term never counted, since they step
+straight back; the last term adds them back. -/
 theorem nonbacktrackingMul_add_two (G H : Matrix ι ι R) (k : ℕ) :
     nonbacktrackingMul G H (k + 2) =
       G * nonbacktrackingPow H (k + 2) - diagonal (G * H).diag * nonbacktrackingPow H (k + 1) +
@@ -177,8 +207,10 @@ theorem nonbacktrackingPow_two (H : Matrix ι ι R) :
   rw [nonbacktrackingPow_succ, nonbacktrackingMul_one]
 
 /-- **The non-backtracking recursion.** The walks of length `k + 3` are the walks of length `k + 2`
-with a step in front, minus those whose second step undoes the first, plus those that then traverse
-the same edge a third time. -/
+with a step in front, minus a step forward and straight back followed by any walk of length
+`k + 1`. This subtraction also removes the walks that then traverse the same edge a third time,
+which the first term never counted, since they step straight back; the last term adds them
+back. -/
 theorem nonbacktrackingPow_add_three (H : Matrix ι ι R) (k : ℕ) :
     nonbacktrackingPow H (k + 3) =
       H * nonbacktrackingPow H (k + 2) - diagonal (H * H).diag * nonbacktrackingPow H (k + 1) +
@@ -286,6 +318,51 @@ theorem nonbacktrackingMul_apply (G H : Matrix ι ι R) (k : ℕ) (i j : ι) :
           ∀ t : Fin (k + 1), (t : ℕ) = 1 → v t ≠ i,
         ∏ t : Fin k, H (v t.castSucc) (v t.succ) := by
   simp [nonbacktrackingMul, nonbacktrackingAux_apply]
+
+section Blocks
+
+variable {m n : Type*} [Fintype m] [Fintype n] [DecidableEq m] [DecidableEq n]
+  (B : Matrix m n R) (C : Matrix n m R)
+
+omit [Fintype m] [Fintype n] [DecidableEq m] [DecidableEq n] in
+/-- A walk of nonzero weight in a block matrix with zero diagonal blocks is at time `t` on the side
+of its starting point exactly when `t` is even. -/
+private theorem isLeft_eq_iff_even_of_prod_ne_zero {k : ℕ} {w : Fin (k + 1) → m ⊕ n}
+    (hw : ∏ t : Fin k, fromBlocks 0 B C 0 (w t.castSucc) (w t.succ) ≠ 0) (t : Fin (k + 1)) :
+    (w t).isLeft = (w 0).isLeft ↔ Even (t : ℕ) := by
+  induction t using Fin.induction with
+  | zero => simp
+  | succ t ih =>
+    -- The step at time `t` has nonzero weight, so it switches between the two blocks.
+    have ht : fromBlocks 0 B C 0 (w t.castSucc) (w t.succ) ≠ 0 :=
+      fun h ↦ hw (prod_eq_zero (mem_univ t) h)
+    have hswitch : (w t.succ).isLeft = !(w t.castSucc).isLeft := by
+      revert ht
+      rcases w t.castSucc with a | a <;> rcases w t.succ with b | b <;> simp
+    rw [Fin.val_castSucc] at ih
+    rw [Fin.val_succ, Nat.even_add_one, ← ih, hswitch]
+    cases (w t.castSucc).isLeft <;> cases (w 0).isLeft <;> simp
+
+/-- **Walks of a block matrix with zero diagonal blocks alternate.** For `H = fromBlocks 0 B C 0` on
+`m ⊕ n`, entry `(x, y)` of `nonbacktrackingPow H k` is the sum over the non-backtracking walks from
+`x` to `y` that are on the side of `x` exactly at even times, since every other walk takes a step
+of weight zero. For the Hermitian dilation of a rectangular matrix and a row `x = Sum.inl a`, these
+are the walks visiting rows at even times and columns at odd times. -/
+theorem nonbacktrackingPow_fromBlocks_zero₁₁_zero₂₂_apply (k : ℕ) (x y : m ⊕ n) :
+    nonbacktrackingPow (fromBlocks 0 B C 0) k x y =
+      ∑ w : Fin (k + 1) → m ⊕ n with w 0 = x ∧ w (Fin.last k) = y ∧
+          (∀ s t : Fin (k + 1), (s : ℕ) + 2 = t → w s ≠ w t) ∧
+          ∀ t : Fin (k + 1), ((w t).isLeft = x.isLeft ↔ Even (t : ℕ)),
+        ∏ t : Fin k, fromBlocks 0 B C 0 (w t.castSucc) (w t.succ) := by
+  rw [nonbacktrackingPow_apply, sum_filter, sum_filter]
+  refine sum_congr rfl fun w _ ↦ ?_
+  by_cases hw : ∏ t : Fin k, fromBlocks 0 B C 0 (w t.castSucc) (w t.succ) = 0
+  · simp [hw]
+  · refine if_congr ⟨fun h ↦ ⟨h.1, h.2.1, h.2.2, ?_⟩, fun h ↦ ⟨h.1, h.2.1, h.2.2.1⟩⟩ rfl rfl
+    rw [← h.1]
+    exact isLeft_eq_iff_even_of_prod_ne_zero B C hw
+
+end Blocks
 
 end Walks
 

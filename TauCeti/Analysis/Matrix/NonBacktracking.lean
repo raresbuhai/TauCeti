@@ -7,8 +7,10 @@ module
 
 public import Mathlib.Analysis.CStarAlgebra.Matrix
 public import TauCeti.LinearAlgebra.Matrix.NonBacktracking
+import TauCeti.Algebra.Order.Ring.GeomSum
 import TauCeti.Analysis.Matrix.EntrywiseOpNorm
 import TauCeti.Analysis.Matrix.L2OpNorm
+import TauCeti.LinearAlgebra.Matrix.Hermitian
 
 /-!
 # Operator norms of non-backtracking walk matrices
@@ -163,17 +165,6 @@ theorem IsHermitian.l2_opNorm_nonbacktrackingMul_le (hH : H.IsHermitian) (hb₀ 
           · exact (l2_opNorm_mul _ _).trans (by gcongr)
       _ = _ := by ring
 
-/-- `1 + ∑ j < k + 1, a ^ j ≤ a ^ (k + 1)` for `a ≥ 2`. -/
-private theorem one_add_sum_range_pow_le {a : ℝ} (ha : 2 ≤ a) (k : ℕ) :
-    1 + ∑ j ∈ range (k + 1), a ^ j ≤ a ^ (k + 1) := by
-  induction k with
-  | zero =>
-    norm_num
-    linarith
-  | succ k ih =>
-    rw [sum_range_succ, ← add_assoc, pow_succ a (k + 1)]
-    nlinarith [pow_nonneg (by linarith : (0 : ℝ) ≤ a) (k + 1)]
-
 /-- **A crude norm bound for non-backtracking walk matrices.** Let `H` be Hermitian with entries of
 norm at most `1` and rows of squared norm at most `d ≥ 0`. Then the non-backtracking walk matrix
 of length `k` has operator norm at most `(‖H‖ + 2 * d + 2) ^ k`. -/
@@ -184,9 +175,9 @@ theorem IsHermitian.l2_opNorm_nonbacktrackingPow_le (hH : H.IsHermitian) (hd : 0
   have ha : 2 ≤ a := by have := norm_nonneg H; simp only [a]; linarith
   have hD : ‖diagonal (H * H).diag‖ ≤ d := by
     refine l2_opNorm_diagonal_le hd fun i ↦ ?_
-    rw [diag_apply, Matrix.mul_apply]
-    refine (norm_sum_le _ _).trans (le_of_eq_of_le (sum_congr rfl fun w _ ↦ ?_) (hrow i))
-    rw [norm_mul, ← hH.apply i w, norm_star, sq]
+    rw [hH.diag_mul_self_apply, RCLike.norm_ofReal,
+      abs_of_nonneg (sum_nonneg fun _ _ ↦ by positivity)]
+    exact hrow i
   induction k using Nat.strong_induction_on with
   | _ k ih =>
   match k with
@@ -199,7 +190,7 @@ theorem IsHermitian.l2_opNorm_nonbacktrackingPow_le (hH : H.IsHermitian) (hd : 0
   | k + 3 =>
     have hE := hH.l2_opNorm_nonbacktrackingMul_le zero_le_one le_rfl hd hentry hrow one_ne_zero k
     have hsum : 1 + ∑ j ∈ range (k + 1), ‖nonbacktrackingPow H j‖ ≤ a ^ (k + 1) := by
-      refine le_trans ?_ (one_add_sum_range_pow_le ha k)
+      refine le_trans ?_ (TauCeti.one_add_geom_sum_le_pow ha (k + 1))
       gcongr with j hj
       exact ih j (by have := mem_range.mp hj; omega)
     have h2 := ih (k + 2) (by omega)
